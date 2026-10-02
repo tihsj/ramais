@@ -148,7 +148,9 @@
         // Inicialização do Firebase e Firestore
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
-        const ramaisRef = db.collection("ramais");
+        const ramaisRef = db.collection("ramais"); 
+        const app = initializeApp(firebaseConfig);
+        const analytics = getAnalytics(app);
 
         const usuarios = {
             'admin': { senha: 'hsj*846', tipo: 'admin', nome: 'Administrador' },
