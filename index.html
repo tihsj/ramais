@@ -1,140 +1,5 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Gestão de Ramais</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- SDKs do Firebase (Modo Compatibilidade) -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-</head>
-<body class="bg-gray-100 min-h-screen text-gray-800">
-
-    <!-- TELA DE LOGIN -->
-    <div id="telaLogin" class="fixed inset-0 bg-slate-900 flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
-            <div class="flex justify-center mb-6">
-                <img src="logo_hospital.png" alt="Logo do Hospital" class="h-14 object-contain">
-            </div>
-
-            <div class="text-center mb-6">
-                <h2 class="text-2xl font-bold text-blue-700">Controle de Ramais</h2>
-                <p class="text-gray-500 text-sm mt-1">Faça login para continuar</p>
-            </div>
-            
-            <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-medium mb-2">Usuário</label>
-                <select id="loginUsuario" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    <option value="admin">Administrador</option>
-                    <option value="viewer">Visualizador</option>
-                </select>
-            </div>
-
-            <div class="mb-6">
-                <label class="block text-gray-700 text-sm font-medium mb-2">Senha</label>
-                <input type="password" id="loginSenha" placeholder="Digite sua senha" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            </div>
-
-            <button onclick="fazerLogin()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition shadow">
-                Entrar no Sistema
-            </button>
-            <p id="erroLogin" class="text-red-500 text-xs text-center mt-3 hidden">Senha incorreta. Tente novamente.</p>
-            
-            <div class="mt-6 text-xs text-gray-400 text-center bg-gray-50 p-3 rounded-lg border border-gray-100">
-                <p><strong>Setor de TI HSJ:</strong></p>
-                <p>Admin: <code class="bg-gray-200 px-1 rounded">****</code> | Visualizador: <code class="bg-gray-200 px-1 rounded">12345</code></p>
-            </div>
-        </div>
-    </div>
-
-    <!-- SISTEMA PRINCIPAL -->
-    <div id="sistemaPrincipal" class="hidden">
-        <div class="bg-slate-800 text-white py-2 px-4 shadow-md">
-            <div class="container mx-auto max-w-5xl flex justify-between items-center text-sm">
-                <div class="flex items-center gap-2">
-                    <span class="font-semibold">Usuário Logado:</span>
-                    <span id="labelPerfil" class="bg-blue-600 px-2.5 py-0.5 rounded-full text-xs font-bold">Administrador</span>
-                </div>
-                <button onclick="fazerLogout()" class="bg-red-600 hover:bg-red-500 px-3 py-1 rounded transition font-medium text-xs">Sair / Logout</button>
-            </div>
-        </div>
-
-        <div class="container mx-auto px-4 py-8 max-w-5xl">
-            <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                <div>
-                    <h1 class="text-3xl font-bold text-blue-700">Relação de Ramais</h1>
-                    <p class="text-gray-600">Gerenciamento e consulta rápida de ramais, setores e e-mails</p>
-                </div>
-                <button id="btnNovoRamal" onclick="abrirModalAdicionar()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-lg shadow transition flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
-                    </svg>
-                    Novo Ramal
-                </button>
-            </header>
-
-            <div class="bg-white p-4 rounded-xl shadow-sm mb-6 flex flex-col md:flex-row gap-4">
-                <div class="flex-1 relative">
-                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
-                        </svg>
-                    </span>
-                    <input type="text" id="searchInput" onkeyup="filtrarRamais()" placeholder="Pesquisar por ramal, setor ou e-mail..." class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                </div>
-            </div>
-
-            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-gray-50 text-gray-700 uppercase text-xs tracking-wider border-b border-gray-200">
-                                <th class="py-3 px-6">Ramal</th>
-                                <th class="py-3 px-6">Setor</th>
-                                <th class="py-3 px-6">E-mail</th>
-                                <th id="colunaAcoesHeader" class="py-3 px-6 text-center">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tabelaRamais" class="divide-y divide-gray-200 text-sm">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal -->
-    <div id="modalRamal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl">
-            <h3 id="modalTitulo" class="text-xl font-bold text-gray-800 mb-4">Adicionar Novo Ramal</h3>
-            <input type="hidden" id="editDocId">
-            
-            <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-medium mb-2">Ramal</label>
-                <input type="text" id="inputRamal" placeholder="Ex: 1042" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            </div>
-
-            <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-medium mb-2">Setor</label>
-                <input type="text" id="inputSetor" placeholder="Ex: 1º Andar" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            </div>
-
-            <div class="mb-6">
-                <label class="block text-gray-700 text-sm font-medium mb-2">E-mail</label>
-                <input type="email" id="inputEmail" placeholder="Ex: setor@hospital.com" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
-            </div>
-
-            <div class="flex justify-end gap-3">
-                <button onclick="fecharModal()" class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition">Cancelar</button>
-                <button onclick="salvarRamal()" class="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition">Salvar</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // 1. CONFIGURAÇÃO DO FIREBASE (Cole os seus dados copiados da consola do Firebase)
+<script>
+        // 1. CONFIGURAÇÃO DO FIREBASE
         const firebaseConfig = {
              apiKey: "AIzaSyCFMcGjsWQPKGGudgqU9M7MBf-W8n7UZ7s",
              authDomain: "ramais-32f11.firebaseapp.com",
@@ -143,11 +8,12 @@
              messagingSenderId: "472510625245",
              appId: "1:472510625245:web:97fb0ac96df913ad4d7234",
              measurementId: "G-0NQVWMSRL7"
-                    };
+        };
 
-        // Inicialização do Firebase e Firestore
-        const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
+        // Inicialização do Firebase e Firestore (Modo Compatibilidade)
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const ramaisRef = db.collection("ramais");
 
         const usuarios = {
             'admin': { senha: 'hsj*846', tipo: 'admin', nome: 'Administrador' },
@@ -192,7 +58,6 @@
         // Sincronização em tempo real do Firebase Firestore
         function escutarFirebase() {
             ramaisRef.onSnapshot((snapshot) => {
-                // Povoamento automático na primeira execução se a base de dados estiver vazia
                 if (snapshot.empty) {
                     povoarDadosIniciais();
                     return;
@@ -206,9 +71,7 @@
                     });
                 });
 
-                // Ordena por número de ramal/setor
                 listaRamaisGlobal.sort((a, b) => (a.setor || '').localeCompare(b.setor || ''));
-
                 filtrarRamais();
             });
         }
@@ -385,5 +248,3 @@
             }
         }
     </script>
-</body>
-</html>
