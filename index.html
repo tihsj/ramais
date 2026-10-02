@@ -146,9 +146,6 @@
                     };
 
         // Inicialização do Firebase e Firestore
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const ramaisRef = db.collection("ramais"); 
         const app = initializeApp(firebaseConfig);
         const analytics = getAnalytics(app);
 
