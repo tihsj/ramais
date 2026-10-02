@@ -1,5 +1,126 @@
-<script>
-        // 1. CONFIGURAÇÃO DO FIREBASE
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lista de Ramais</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase SDK (Modo Compatibilidade) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-gray-100 min-h-screen text-gray-800">
+
+    <!-- TELA DE LOGIN -->
+    <div id="telaLogin" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
+            <h2 class="text-2xl font-bold text-center text-blue-600 mb-6">Acesso ao Sistema de Ramais</h2>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Perfil de Usuário</label>
+                    <select id="loginUsuario" class="w-full border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="viewer">Visualizador (Apenas consulta)</option>
+                        <option value="admin">Administrador (Edição total)</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+                    <input type="password" id="loginSenha" placeholder="Digite a palavra-passe" class="w-full border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onkeypress="if(event.key === 'Enter') fazerLogin()">
+                </div>
+
+                <p id="erroLogin" class="text-red-500 text-sm hidden">Palavra-passe incorreta. Tente novamente.</p>
+
+                <button onclick="fazerLogin()" class="w-full bg-blue-600 text-white font-semibold py-2.5 rounded-lg hover:bg-blue-700 transition">
+                    Entrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SISTEMA PRINCIPAL -->
+    <div id="sistemaPrincipal" class="hidden p-4 md:p-8 max-w-6xl mx-auto">
+        <!-- Cabeçalho -->
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between bg-white p-6 rounded-xl shadow-sm mb-6 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Lista de Ramais Telefónicos</h1>
+                <p class="text-gray-500 text-sm mt-1">Consulte ou gerencie os ramais da instituição</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="labelPerfil" class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-bold"></span>
+                <button onclick="fazerLogout()" class="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition font-medium border border-red-200">
+                    Sair
+                </button>
+            </div>
+        </div>
+
+        <!-- Controles (Busca e Botão Adicionar) -->
+        <div class="flex flex-col sm:flex-row justify-between gap-4 mb-6">
+            <div class="relative flex-1">
+                <input type="text" id="searchInput" onkeyup="filtrarRamais()" placeholder="Pesquisar por ramal, setor ou e-mail..." class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm">
+                <svg class="w-5 h-5 text-gray-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+            </div>
+            <button id="btnNovoRamal" onclick="abrirModalAdicionar()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-lg transition flex items-center justify-center gap-2 shadow-sm">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                </svg>
+                Novo Ramal
+            </button>
+        </div>
+
+        <!-- Tabela -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 border-b border-gray-200 text-gray-600 text-xs uppercase tracking-wider">
+                            <th class="py-3 px-6">Ramal</th>
+                            <th class="py-3 px-6">Setor</th>
+                            <th class="py-3 px-6">E-mail</th>
+                            <th id="colunaAcoesHeader" class="py-3 px-6 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaRamais" class="divide-y divide-gray-200 text-sm">
+                        <!-- Conteúdo carregado via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL (Adicionar / Editar) -->
+    <div id="modalRamal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h3 id="modalTitulo" class="text-xl font-bold text-gray-800 mb-4">Adicionar Novo Ramal</h3>
+            <input type="hidden" id="editDocId">
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Ramal</label>
+                    <input type="text" id="inputRamal" placeholder="Ex: 1000" class="w-full border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Setor</label>
+                    <input type="text" id="inputSetor" placeholder="Ex: Portaria" class="w-full border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">E-mail (Opcional)</label>
+                    <input type="email" id="inputEmail" placeholder="setor@empresa.com" class="w-full border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="fecharModal()" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">Cancelar</button>
+                <button onclick="salvarRamal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LÓGICA E JAVASCRIPT -->
+    <script>
+        // Configuração do Firebase
         const firebaseConfig = {
              apiKey: "AIzaSyCFMcGjsWQPKGGudgqU9M7MBf-W8n7UZ7s",
              authDomain: "ramais-32f11.firebaseapp.com",
@@ -10,7 +131,7 @@
              measurementId: "G-0NQVWMSRL7"
         };
 
-        // Inicialização do Firebase e Firestore (Modo Compatibilidade)
+        // Inicialização do Firebase e Firestore
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const ramaisRef = db.collection("ramais");
@@ -55,7 +176,6 @@
             { ramal: "1028", setor: "Urgência", email: "" }, { ramal: "1068", setor: "Urologia Recepção", email: "" }
         ];
 
-        // Sincronização em tempo real do Firebase Firestore
         function escutarFirebase() {
             ramaisRef.onSnapshot((snapshot) => {
                 if (snapshot.empty) {
@@ -123,11 +243,11 @@
             if (userObj.tipo === 'admin') {
                 btnNovo.style.display = 'flex';
                 colunaAcoes.style.display = 'table-cell';
-                label.className = 'bg-blue-600 px-2.5 py-0.5 rounded-full text-xs font-bold';
+                label.className = 'bg-blue-600 px-2.5 py-0.5 rounded-full text-xs font-bold text-white';
             } else {
                 btnNovo.style.display = 'none';
                 colunaAcoes.style.display = 'none';
-                label.className = 'bg-emerald-600 px-2.5 py-0.5 rounded-full text-xs font-bold';
+                label.className = 'bg-emerald-600 px-2.5 py-0.5 rounded-full text-xs font-bold text-white';
             }
 
             escutarFirebase();
@@ -248,3 +368,5 @@
             }
         }
     </script>
+</body>
+</html>
