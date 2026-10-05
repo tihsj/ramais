@@ -6,9 +6,6 @@
     <title>Lista de Ramais</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Firebase SDK (Modo Compatibilidade) -->
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body class="bg-gray-100 min-h-screen text-gray-800">
 
@@ -85,7 +82,9 @@
                         </tr>
                     </thead>
                     <tbody id="tabelaRamais" class="divide-y divide-gray-200 text-sm">
-                        <!-- Conteúdo carregado via JavaScript -->
+                        <tr>
+                            <td colspan="4" class="text-center py-6 text-gray-500">A carregar ramais...</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -118,8 +117,20 @@
         </div>
     </div>
 
-    <!-- LÓGICA E JAVASCRIPT -->
-    <script>
+    <!-- LÓGICA E JAVASCRIPT (Sintaxe de Módulos Firebase CDN) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection, 
+            onSnapshot, 
+            doc, 
+            addDoc, 
+            updateDoc, 
+            deleteDoc, 
+            writeBatch 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
         // Configuração do Firebase
         const firebaseConfig = {
              apiKey: "AIzaSyCFMcGjsWQPKGGudgqU9M7MBf-W8n7UZ7s",
@@ -132,9 +143,9 @@
         };
 
         // Inicialização do Firebase e Firestore
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const ramaisRef = db.collection("ramais");
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const ramaisRef = collection(db, "ramais");
 
         const usuarios = {
             'admin': { senha: 'hsj*846', tipo: 'admin', nome: 'Administrador' },
@@ -143,6 +154,7 @@
 
         let sessaoAtual = sessionStorage.getItem('sessao_usuario');
         let listaRamaisGlobal = [];
+        let estaPovoando = false;
 
         const dadosIniciais = [
             { ramal: "1042", setor: "1º Andar", email: "" }, { ramal: "1061", setor: "Ala A", email: "" },
@@ -177,36 +189,43 @@
         ];
 
         function escutarFirebase() {
-            ramaisRef.onSnapshot((snapshot) => {
-                if (snapshot.empty) {
+            onSnapshot(ramaisRef, (snapshot) => {
+                if (snapshot.empty && !estaPovoando) {
                     povoarDadosIniciais();
                     return;
                 }
 
                 listaRamaisGlobal = [];
-                snapshot.forEach((doc) => {
+                snapshot.forEach((docSnap) => {
                     listaRamaisGlobal.push({
-                        id: doc.id,
-                        ...doc.data()
+                        id: docSnap.id,
+                        ...docSnap.data()
                     });
                 });
 
                 listaRamaisGlobal.sort((a, b) => (a.setor || '').localeCompare(b.setor || ''));
                 filtrarRamais();
+            }, (erro) => {
+                console.error("Erro no Firestore: ", erro);
+                const tbody = document.getElementById('tabelaRamais');
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-6 text-red-600 font-semibold">Erro de permissão no Firebase. Verifique as Regras de Segurança no Firestore Console.</td></tr>`;
             });
         }
 
         async function povoarDadosIniciais() {
-            const batch = db.batch();
-            dadosIniciais.forEach((item) => {
-                const docRef = ramaisRef.doc();
-                batch.set(docRef, item);
-            });
-            await batch.commit();
-        }
-
-        if (sessaoAtual && usuarios[sessaoAtual]) {
-            liberarSistema(usuarios[sessaoAtual]);
+            estaPovoando = true;
+            try {
+                const batch = writeBatch(db);
+                dadosIniciais.forEach((item) => {
+                    const newDocRef = doc(ramaisRef);
+                    batch.set(newDocRef, item);
+                });
+                await batch.commit();
+            } catch (err) {
+                console.error("Erro ao povoar dados iniciais:", err);
+            } finally {
+                estaPovoando = false;
+            }
         }
 
         function fazerLogin() {
@@ -260,7 +279,7 @@
 
             if (dados.length === 0) {
                 const colspan = userObj && userObj.tipo === 'admin' ? 4 : 3;
-                tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center py-4 text-gray-500">Nenhum registro encontrado.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center py-6 text-gray-500">Nenhum registo encontrado.</td></tr>`;
                 return;
             }
 
@@ -348,9 +367,9 @@
 
             try {
                 if (!docId) {
-                    await ramaisRef.add(dados);
+                    await addDoc(ramaisRef, dados);
                 } else {
-                    await ramaisRef.doc(docId).update(dados);
+                    await updateDoc(doc(db, "ramais", docId), dados);
                 }
                 fecharModal();
             } catch (error) {
@@ -361,11 +380,26 @@
         async function deletarRamal(docId, numeroRamal) {
             if (confirm(`Deseja realmente excluir o ramal ${numeroRamal}?`)) {
                 try {
-                    await ramaisRef.doc(docId).delete();
+                    await deleteDoc(doc(db, "ramais", docId));
                 } catch (error) {
                     alert('Erro ao excluir do Firebase: ' + error.message);
                 }
             }
+        }
+
+        // Exportação explícita para o escopo global (Window)
+        window.fazerLogin = fazerLogin;
+        window.fazerLogout = fazerLogout;
+        window.filtrarRamais = filtrarRamais;
+        window.abrirModalAdicionar = abrirModalAdicionar;
+        window.abrirModalEditar = abrirModalEditar;
+        window.fecharModal = fecharModal;
+        window.salvarRamal = salvarRamal;
+        window.deletarRamal = deletarRamal;
+
+        // Auto-login se existir sessão ativa
+        if (sessaoAtual && usuarios[sessaoAtual]) {
+            liberarSistema(usuarios[sessaoAtual]);
         }
     </script>
 </body>
