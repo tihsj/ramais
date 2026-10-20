@@ -574,6 +574,7 @@
         let limpandoDuplicados = false;
         let duplicadosRevisados = null;
         let revisaoValida = false;
+        let assinaturaRamais = null;
 
         function escutarFirebase() {
             if (cancelarEscuta) return;
@@ -588,11 +589,17 @@
                 });
 
                 listaRamaisGlobal.sort((a, b) => (a.setor || '').localeCompare(b.setor || ''));
-                revisaoValida = false;
-                duplicadosRevisados = null;
-                const resultado = document.getElementById('resultadoDuplicados');
-                resultado.classList.add('hidden');
-                resultado.replaceChildren();
+                const novaAssinatura = JSON.stringify(listaRamaisGlobal.map(item => [item.id, item.ramal, item.setor, item.email]).sort((a,b) => a[0].localeCompare(b[0])));
+                if (assinaturaRamais !== novaAssinatura) {
+                    assinaturaRamais = novaAssinatura;
+                    if (!limpandoDuplicados) {
+                        revisaoValida = false;
+                        duplicadosRevisados = null;
+                        const resultado = document.getElementById('resultadoDuplicados');
+                        resultado.classList.add('hidden');
+                        resultado.replaceChildren();
+                    }
+                }
                 filtrarRamais();
             }, (erro) => {
                 console.error("Erro no Firestore: ", erro);
@@ -844,11 +851,13 @@
                 const idsElegiveis = new Set();
                 for (const grupo of porChave.values()) {
                     if (grupo.length > 1) {
+                        // Preferir manter um cadastro com identificador estável.
+                        grupo.sort((a, b) => a.id.localeCompare(b.id));
                         grupo.slice(1).forEach(item => idsElegiveis.add(item.id));
                     }
                 }
                 const ids = candidatos.filter(c => idsElegiveis.has(c.id) && porChave.get(c.chave)?.some(i => i.id === c.id)).map(c => c.id);
-                if (ids.length !== candidatos.length) throw new Error('Os dados mudaram desde a conferência. Verifique novamente antes de excluir.');
+                if (ids.length !== candidatos.length) throw new Error('Os dados foram atualizados. Clique novamente em Verificar duplicados antes de excluir.');
                 let removidos = 0;
                 for (const id of ids) {
                     await deleteDoc(doc(db, 'ramais', id));
@@ -857,10 +866,11 @@
                 }
                 status.textContent = `${removidos} cópias removidas. Os cadastros únicos foram preservados.`;
             } catch (erro) {
-                status.textContent = `A limpeza foi interrompida: ${erro.message}. Verifique os registros antes de tentar novamente.`;
+                status.textContent = `A limpeza foi interrompida: ${erro.message}. ${erro.code === 'permission-denied' ? 'O Firebase não autorizou a exclusão: verifique as regras de segurança da coleção ramais.' : 'Verifique os registros antes de tentar novamente.'}`;
             } finally {
                 duplicadosRevisados = null;
                 limpandoDuplicados = false;
+                revisaoValida = false;
             }
         }
 
