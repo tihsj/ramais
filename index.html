@@ -535,7 +535,6 @@
             addDoc, 
             updateDoc, 
             deleteDoc, 
-            writeBatch 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // Configuração do Firebase
@@ -561,46 +560,12 @@
 
         let sessaoAtual = sessionStorage.getItem('sessao_usuario');
         let listaRamaisGlobal = [];
-        let estaPovoando = false;
-
-        const dadosIniciais = [
-            { ramal: "1042", setor: "1º Andar", email: "" }, { ramal: "1061", setor: "Ala A", email: "" },
-            { ramal: "1045", setor: "Ala B", email: "" }, { ramal: "1011", setor: "Almoxarifado Central", email: "" },
-            { ramal: "1005", setor: "UTI Ir. Dulce coordenação", email: "" }, { ramal: "1006", setor: "UTI Ir. Dulce Posto 02", email: "" },
-            { ramal: "1009", setor: "UTI Ir. Dulce Posto 01", email: "" }, { ramal: "1007", setor: "UTI Ir. Dulce Farmácia", email: "" },
-            { ramal: "1052", setor: "Arquivo (ao Id manu.)", email: "" }, { ramal: "1022", setor: "Auditoria", email: "" },
-            { ramal: "1049", setor: "Balcão SADT", email: "" }, { ramal: "1047", setor: "Casa das Irmãs", email: "" },
-            { ramal: "1048", setor: "Casa das Irmãs", email: "" }, { ramal: "1013", setor: "CCIH", email: "" },
-            { ramal: "1026", setor: "Centro Cirúrgico", email: "" }, { ramal: "1027", setor: "Centro Cirúrgico", email: "" },
-            { ramal: "1010", setor: "Consultório (urologia)", email: "" }, { ramal: "1012", setor: "Consultório (urologia)", email: "" },
-            { ramal: "1015", setor: "Consultório (urologia)", email: "" }, { ramal: "1016", setor: "Consultório (urologia)", email: "" },
-            { ramal: "1020", setor: "Contabilidade", email: "" }, { ramal: "1053", setor: "Copa 1º Andar", email: "" },
-            { ramal: "1056", setor: "Cozinha", email: "" }, { ramal: "1018", setor: "CPD", email: "" },
-            { ramal: "1058", setor: "Dept Enfermagem", email: "" }, { ramal: "1030", setor: "Diretoria - Presidência", email: "" },
-            { ramal: "1040", setor: "Diretoria Secretária", email: "" }, { ramal: "1029", setor: "UTI Geral", email: "" },
-            { ramal: "1019", setor: "Tomografia", email: "" }, { ramal: "1046", setor: "ECG", email: "" },
-            { ramal: "1017", setor: "Endoscopia", email: "" }, { ramal: "1035", setor: "Farmácia", email: "" },
-            { ramal: "1041", setor: "Faturamento", email: "" }, { ramal: "1066", setor: "Fissurados", email: "" },
-            { ramal: "1033", setor: "Internamento", email: "" }, { ramal: "1023", setor: "Jurídico", email: "" },
-            { ramal: "1025", setor: "Laboratório", email: "" }, { ramal: "1038", setor: "Laboratório (recepção)", email: "" },
-            { ramal: "1031", setor: "Lavanderia", email: "" }, { ramal: "1051", setor: "Manutenção", email: "" },
-            { ramal: "1039", setor: "Medicina do Trabalho", email: "" }, { ramal: "1057", setor: "Ortopedia", email: "" },
-            { ramal: "1059", setor: "Otocenter", email: "" }, { ramal: "1055", setor: "Portaria", email: "" },
-            { ramal: "1060", setor: "Rx Sala Técnico", email: "" }, { ramal: "1054", setor: "Sala de Produção", email: "" },
-            { ramal: "1034", setor: "Setor de Compras", email: "" }, { ramal: "1021", setor: "Setor Pessoal", email: "" },
-            { ramal: "1044", setor: "SHRAD posto", email: "" }, { ramal: "1043", setor: "Serviço Social", email: "" },
-            { ramal: "1000 ou 9", setor: "Telefonista", email: "" }, { ramal: "1024", setor: "Tesouraria", email: "" },
-            { ramal: "1008", setor: "Ultrasson / Urologia", email: "" }, { ramal: "1064", setor: "Urg. Mental Coordenação", email: "" },
-            { ramal: "1037", setor: "Urg. Mental Recepção", email: "" }, { ramal: "1072", setor: "Urgência posto", email: "" },
-            { ramal: "1028", setor: "Urgência", email: "" }, { ramal: "1068", setor: "Urologia Recepção", email: "" }
-        ];
+        let cancelarEscuta = null;
+        let salvandoRamal = false;
 
         function escutarFirebase() {
-            onSnapshot(ramaisRef, (snapshot) => {
-                if (snapshot.empty && !estaPovoando) {
-                    povoarDadosIniciais();
-                    return;
-                }
+            if (cancelarEscuta) return;
+            cancelarEscuta = onSnapshot(ramaisRef, (snapshot) => {
 
                 listaRamaisGlobal = [];
                 snapshot.forEach((docSnap) => {
@@ -619,22 +584,6 @@
             });
         }
 
-        async function povoarDadosIniciais() {
-            estaPovoando = true;
-            try {
-                const batch = writeBatch(db);
-                dadosIniciais.forEach((item) => {
-                    const newDocRef = doc(ramaisRef);
-                    batch.set(newDocRef, item);
-                });
-                await batch.commit();
-            } catch (err) {
-                console.error("Erro ao povoar dados iniciais:", err);
-            } finally {
-                estaPovoando = false;
-            }
-        }
-
         function fazerLogin() {
             const usuarioSel = document.getElementById('loginUsuario').value;
             const senhaDigitada = document.getElementById('loginSenha').value;
@@ -651,6 +600,7 @@
         }
 
         function fazerLogout() {
+            if (cancelarEscuta) { cancelarEscuta(); cancelarEscuta = null; }
             sessionStorage.removeItem('sessao_usuario');
             document.getElementById('sistemaPrincipal').classList.add('hidden');
             document.getElementById('telaLogin').classList.remove('hidden');
@@ -760,6 +710,7 @@
         }
 
         async function salvarRamal() {
+            if (salvandoRamal) return;
             const ramalVal = document.getElementById('inputRamal').value.trim();
             const setorVal = document.getElementById('inputSetor').value.trim();
             const emailVal = document.getElementById('inputEmail').value.trim();
@@ -771,7 +722,11 @@
             }
 
             const dados = { ramal: ramalVal, setor: setorVal, email: emailVal };
-
+            if (!docId && listaRamaisGlobal.some(item => String(item.ramal || "").trim().toLowerCase() === ramalVal.toLowerCase() && String(item.setor || "").trim().toLowerCase() === setorVal.toLowerCase())) {
+                alert("Este ramal já está cadastrado para este setor.");
+                return;
+            }
+            salvandoRamal = true;
             try {
                 if (!docId) {
                     await addDoc(ramaisRef, dados);
@@ -781,6 +736,8 @@
                 fecharModal();
             } catch (error) {
                 alert('Erro ao salvar no Firebase: ' + error.message);
+            } finally {
+                salvandoRamal = false;
             }
         }
 
