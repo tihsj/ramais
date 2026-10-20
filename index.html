@@ -460,6 +460,15 @@
             </button>
         </div>
 
+        <!-- Limpeza manual e revisável de duplicatas (somente administrador) -->
+        <div id="painelDuplicados" class="hidden bg-white border border-amber-200 rounded-xl p-4 mb-5 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div><h2 class="font-bold text-gray-800">Conferência de cadastros duplicados</h2><p class="text-sm text-gray-600">Somente registros com ramal, setor e e-mail idênticos serão candidatos à exclusão.</p></div>
+                <button type="button" id="btnVerDuplicados" onclick="analisarDuplicados()" class="px-4 py-2 bg-amber-100 text-amber-900 rounded-lg font-semibold">Verificar duplicados</button>
+            </div>
+            <div id="resultadoDuplicados" class="hidden mt-4 text-sm"></div>
+        </div>
+
         <!-- Tabela -->
         <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
             <div class="overflow-x-auto">
@@ -562,6 +571,9 @@
         let listaRamaisGlobal = [];
         let cancelarEscuta = null;
         let salvandoRamal = false;
+        let limpandoDuplicados = false;
+        let duplicadosRevisados = null;
+        let revisaoValida = false;
 
         function escutarFirebase() {
             if (cancelarEscuta) return;
@@ -576,6 +588,11 @@
                 });
 
                 listaRamaisGlobal.sort((a, b) => (a.setor || '').localeCompare(b.setor || ''));
+                revisaoValida = false;
+                duplicadosRevisados = null;
+                const resultado = document.getElementById('resultadoDuplicados');
+                resultado.classList.add('hidden');
+                resultado.replaceChildren();
                 filtrarRamais();
             }, (erro) => {
                 console.error("Erro no Firestore: ", erro);
@@ -601,6 +618,8 @@
 
         function fazerLogout() {
             if (cancelarEscuta) { cancelarEscuta(); cancelarEscuta = null; }
+            duplicadosRevisados = null;
+            revisaoValida = false;
             sessionStorage.removeItem('sessao_usuario');
             document.getElementById('sistemaPrincipal').classList.add('hidden');
             document.getElementById('telaLogin').classList.remove('hidden');
@@ -613,6 +632,7 @@
             const label = document.getElementById('labelPerfil');
             const btnNovo = document.getElementById('btnNovoRamal');
             const colunaAcoes = document.getElementById('colunaAcoesHeader');
+            document.getElementById('painelDuplicados').classList.toggle('hidden', userObj.tipo !== 'admin');
 
             label.innerText = userObj.nome;
 
@@ -751,6 +771,99 @@
             }
         }
 
+        // A limpeza é sempre manual e só considera cópias exatamente iguais.
+        function chaveDuplicado(item) {
+            const normalizar = v => String(v ?? '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR');
+            return JSON.stringify([normalizar(item.ramal), normalizar(item.setor), normalizar(item.email)]);
+        }
+
+        function analisarDuplicados() {
+            if (sessionStorage.getItem('sessao_usuario') !== 'admin') return;
+            const grupos = new Map();
+            for (const item of listaRamaisGlobal) {
+                const chave = chaveDuplicado(item);
+                if (!grupos.has(chave)) grupos.set(chave, []);
+                grupos.get(chave).push(item);
+            }
+            const repetidos = [...grupos.values()].filter(g => g.length > 1);
+            const excedentes = repetidos.flatMap(g => g.slice(1));
+            duplicadosRevisados = excedentes.map(item => ({ id: item.id, chave: chaveDuplicado(item) }));
+            revisaoValida = true;
+            const painel = document.getElementById('resultadoDuplicados');
+            painel.replaceChildren();
+            painel.classList.remove('hidden');
+            const resumo = document.createElement('p');
+            resumo.className = 'font-semibold mb-2';
+            resumo.textContent = `${listaRamaisGlobal.length} registros encontrados. ${repetidos.length} grupos repetidos; ${excedentes.length} cópias idênticas para remover.`;
+            painel.appendChild(resumo);
+            if (!excedentes.length) {
+                const aviso = document.createElement('p');
+                aviso.textContent = 'Nenhum cadastro idêntico duplicado foi encontrado.';
+                painel.appendChild(aviso);
+                return;
+            }
+            const detalhe = document.createElement('div');
+            detalhe.className = 'max-h-60 overflow-auto border rounded-lg p-3 mb-3';
+            for (const grupo of repetidos) {
+                const linha = document.createElement('p');
+                linha.className = 'py-1 border-b last:border-0';
+                linha.textContent = `${grupo[0].ramal} — ${grupo[0].setor} — ${grupo[0].email || 'sem e-mail'} (${grupo.length} cópias; manter 1)`;
+                detalhe.appendChild(linha);
+            }
+            painel.appendChild(detalhe);
+            const botao = document.createElement('button');
+            botao.type = 'button';
+            botao.className = 'bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg px-4 py-2';
+            botao.textContent = `Excluir ${excedentes.length} cópias duplicadas`;
+            botao.addEventListener('click', removerDuplicados);
+            painel.appendChild(botao);
+        }
+
+        async function removerDuplicados() {
+            if (sessionStorage.getItem('sessao_usuario') !== 'admin' || limpandoDuplicados || !revisaoValida || !duplicadosRevisados?.length) return;
+            const candidatos = [...duplicadosRevisados];
+            if (!confirm(`Remover ${candidatos.length} cópias idênticas do Firebase? Um cadastro de cada grupo será mantido. Esta ação não pode ser desfeita. Recomenda-se fazer backup antes.`)) return;
+            limpandoDuplicados = true;
+            revisaoValida = false;
+            const painel = document.getElementById('resultadoDuplicados');
+            painel.replaceChildren();
+            const status = document.createElement('p');
+            status.textContent = 'Conferindo registros no Firebase antes da exclusão...';
+            painel.appendChild(status);
+            try {
+                // Consulta atual para não confiar apenas em dados de uma tela antiga.
+                const { getDocs } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js');
+                const atual = await getDocs(ramaisRef);
+                const porChave = new Map();
+                atual.forEach(d => {
+                    const item = { id: d.id, ...d.data() };
+                    const chave = chaveDuplicado(item);
+                    if (!porChave.has(chave)) porChave.set(chave, []);
+                    porChave.get(chave).push(item);
+                });
+                const idsElegiveis = new Set();
+                for (const grupo of porChave.values()) {
+                    if (grupo.length > 1) {
+                        grupo.slice(1).forEach(item => idsElegiveis.add(item.id));
+                    }
+                }
+                const ids = candidatos.filter(c => idsElegiveis.has(c.id) && porChave.get(c.chave)?.some(i => i.id === c.id)).map(c => c.id);
+                if (ids.length !== candidatos.length) throw new Error('Os dados mudaram desde a conferência. Verifique novamente antes de excluir.');
+                let removidos = 0;
+                for (const id of ids) {
+                    await deleteDoc(doc(db, 'ramais', id));
+                    removidos++;
+                    status.textContent = `Excluindo cópias: ${removidos} de ${ids.length}...`;
+                }
+                status.textContent = `${removidos} cópias removidas. Os cadastros únicos foram preservados.`;
+            } catch (erro) {
+                status.textContent = `A limpeza foi interrompida: ${erro.message}. Verifique os registros antes de tentar novamente.`;
+            } finally {
+                duplicadosRevisados = null;
+                limpandoDuplicados = false;
+            }
+        }
+
         // Exportação explícita para o escopo global (Window)
         window.fazerLogin = fazerLogin;
         window.fazerLogout = fazerLogout;
@@ -760,6 +873,7 @@
         window.fecharModal = fecharModal;
         window.salvarRamal = salvarRamal;
         window.deletarRamal = deletarRamal;
+        window.analisarDuplicados = analisarDuplicados;
         // Fechar modal por ESC ou ao tocar/clicar fora do conteúdo.
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') fecharModal();
